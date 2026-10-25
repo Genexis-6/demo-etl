@@ -5,9 +5,6 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from core.config import settings
 from .models import Base
 
-# Ensure data directory exists
-os.makedirs("data", exist_ok=True)
-
 class DatabaseSessionManager:
     def __init__(self, db_url: str):
         self.engine = create_async_engine(db_url, echo=False)

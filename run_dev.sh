@@ -19,8 +19,12 @@ trap cleanup SIGINT SIGTERM EXIT
 
 # 1. Start FastAPI Backend
 echo "[1/2] Starting FastAPI Backend on http://localhost:8000 ..."
-source venv/bin/activate
-export PYTHONPATH="$DIR:$PYTHONPATH"
+if [ -d "$DIR/backend/venv" ]; then
+    source "$DIR/backend/venv/bin/activate"
+elif [ -d "$DIR/venv" ]; then
+    source "$DIR/venv/bin/activate"
+fi
+export PYTHONPATH="$DIR/backend:$DIR:$PYTHONPATH"
 python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload &
 BACKEND_PID=$!
 

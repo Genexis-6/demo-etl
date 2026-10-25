@@ -1,3 +1,14 @@
+import sys
+from pathlib import Path
+
+# Ensure backend directory and project root are in sys.path
+BACKEND_DIR = Path(__file__).resolve().parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+ROOT_DIR = BACKEND_DIR.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 import asyncio
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -7,7 +18,10 @@ from pydantic import BaseModel
 
 from core.store import db_session_manager, WarehouseQueries
 from core.utils.logger import get_logger
-from backend.orchestrator import orchestrator
+try:
+    from orchestrator import orchestrator
+except ImportError:
+    from backend.orchestrator import orchestrator
 
 logger = get_logger("api")
 
