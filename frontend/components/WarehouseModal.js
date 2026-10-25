@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { X, Search, Database, Download, RefreshCw, Filter } from "lucide-react";
+import { BACKEND_URL } from "../config/api";
 
 export default function WarehouseModal({ isOpen, onClose }) {
   const [products, setProducts] = useState([]);
@@ -18,7 +19,7 @@ export default function WarehouseModal({ isOpen, onClose }) {
       if (searchTerm) params.append("query", searchTerm);
       params.append("limit", "100");
 
-      const res = await fetch(`http://localhost:8000/api/warehouse/products?${params.toString()}`);
+      const res = await fetch(`${BACKEND_URL}/api/warehouse/products?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
         setProducts(data.items || []);

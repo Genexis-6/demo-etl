@@ -13,6 +13,7 @@ import CompletionGauge from "../components/CompletionGauge";
 import LiveConsoleLog from "../components/LiveConsoleLog";
 import WarehouseModal from "../components/WarehouseModal";
 import ArchitectureModal from "../components/ArchitectureModal";
+import { BACKEND_URL, WS_URL } from "../config/api";
 
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -53,6 +54,25 @@ export default function DashboardPage() {
 
   const wsRef = useRef(null);
 
+  // Fetch initial stats snapshot via REST
+  useEffect(() => {
+    const fetchInitialStatus = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/etl/status`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data) {
+            setStats((prev) => ({ ...prev, ...data }));
+            if (data.used_slots !== undefined) setUsedSlots(data.used_slots);
+          }
+        }
+      } catch (err) {
+        console.warn("Initial status fetch error:", err);
+      }
+    };
+    fetchInitialStatus();
+  }, []);
+
   // WebSocket connection & auto-reconnect logic
   useEffect(() => {
     let ws;
@@ -60,9 +80,7 @@ export default function DashboardPage() {
 
     const connectWebSocket = () => {
       try {
-        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const host = window.location.hostname || "localhost";
-        const wsUrl = `${protocol}//${host}:8000/ws/etl`;
+        const wsUrl = WS_URL;
 
         ws = new WebSocket(wsUrl);
         wsRef.current = ws;
@@ -178,7 +196,7 @@ export default function DashboardPage() {
       );
     } else {
       try {
-        await fetch("http://localhost:8000/api/etl/start", {
+        await fetch(`${BACKEND_URL}/api/etl/start`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -201,7 +219,7 @@ export default function DashboardPage() {
       wsRef.current.send(JSON.stringify({ action: "stop" }));
     } else {
       try {
-        await fetch("http://localhost:8000/api/etl/stop", { method: "POST" });
+        await fetch(`${BACKEND_URL}/api/etl/stop`, { method: "POST" });
       } catch (err) {
         console.error("Failed to stop ETL via REST:", err);
       }
@@ -210,9 +228,9 @@ export default function DashboardPage() {
 
   // Clear Warehouse DB
   const handleClearWarehouse = async () => {
-    if (confirm("Reset SQLite warehouse database?")) {
+    if (confirm("Reset warehouse database?")) {
       try {
-        await fetch("http://localhost:8000/api/warehouse/clear", { method: "DELETE" });
+        await fetch(`${BACKEND_URL}/api/warehouse/clear`, { method: "DELETE" });
         setStats((prev) => ({ ...prev, total_loaded: 0 }));
         alert("Warehouse database cleared!");
       } catch (err) {
