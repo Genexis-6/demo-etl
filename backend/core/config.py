@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     PAGE_TO_SCRAPE: int = 3
 
     # Database
-    DATABASE_URL: str = f"sqlite+aiosqlite:///{DEFAULT_DB_FILE}"
+    DATABASE_URL: str 
 
     class Config:
         env_file = ".env"
