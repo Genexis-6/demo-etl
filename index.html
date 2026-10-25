@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Concurrent ETL Pipeline · Jumia · Konga · Jiji</title>
+<meta name="description" content="Live simulation of an async Python ETL that scrapes Jumia, Konga and Jiji concurrently.">
+<style>
+:root{--bg:#07090f;--card:#0e121c;--line:#1c2333;--tx:#e6eaf5;--mu:#8a94ad;--ac:#6ea8ff;--jumia:#f68b1e;--konga:#ee1c7a;--jiji:#37d67a}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(1000px 500px at 80% -10%,#16204a55,transparent),var(--bg);color:var(--tx);font:14px/1.5 Inter,system-ui,sans-serif}
+.w{max-width:1180px;margin:0 auto;padding:24px 16px 60px}
+h1{font-size:clamp(24px,4vw,38px);margin:0 0 6px;letter-spacing:-.02em}
+h1 span{background:linear-gradient(90deg,var(--jumia),var(--konga),var(--jiji));-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:var(--mu);max-width:720px;margin:0 0 18px}
+.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+input,select{background:var(--card);border:1px solid var(--line);color:var(--tx);padding:10px 12px;border-radius:10px;font:inherit}
+input{flex:1;min-width:180px}
+button{background:linear-gradient(135deg,#4f7dff,#8b5cf6);border:0;color:#fff;font-weight:600;padding:10px 20px;border-radius:10px;cursor:pointer;font:inherit;font-weight:600}
+button:disabled{opacity:.5;cursor:default}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.chip{font:12px ui-monospace,Menlo,monospace;color:var(--mu);border:1px solid var(--line);border-radius:99px;padding:3px 10px;background:#0b0f19}
+.chip b{color:var(--ac)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px}
+canvas{width:100%;height:340px;display:block}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px}
+.st{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+.st small{color:var(--mu);display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+.st b{font-size:24px;font-variant-numeric:tabular-nums}
+.slots{display:flex;gap:4px;margin-top:6px}
+.slots i{flex:1;height:8px;border-radius:3px;background:#1a2133;transition:.15s}
+.slots i.on{background:var(--ac);box-shadow:0 0 8px var(--ac)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:860px){.two{grid-template-columns:1fr}}
+h3{margin:0 0 10px;font-size:13px;color:var(--mu);text-transform:uppercase;letter-spacing:.08em}
+#log{height:300px;overflow:auto;font:12px/1.6 ui-monospace,Menlo,monospace}
+#log div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#log .t{color:#4b5570}
+.pb{margin-bottom:10px}
+.pb div.h{display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px}
+.pb .tr{height:6px;background:#1a2133;border-radius:9px;overflow:hidden}
+.pb .tr i{display:block;height:100%;width:0;transition:width .3s}
+table{width:100%;border-collapse:collapse;font-size:12px}
+td{padding:5px 4px;border-bottom:1px solid #151b2a;vertical-align:top}
+td.n{max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.ok{color:var(--jiji)}.no{color:#ff6b6b}
+.tbl{height:300px;overflow:hidden}
+.how{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.how .card{margin:0}
+.how h4{margin:0 0 4px;font-size:15px}
+.how p{margin:0;color:var(--mu);font-size:13px}
+code{font:12px ui-monospace,Menlo,monospace;color:#9ccbff}
+footer{color:var(--mu);font-size:12px;margin-top:24px;text-align:center}
+</style>
+</head>
+<body>
+<div class="w">
+  <h1>Concurrent <span>ETL Pipeline</span></h1>
+  <p class="sub">Live simulation of an async Python scraper that pulls product data from <b>Jumia</b>, <b>Konga</b> and <b>Jiji</b> at the same time, then cleans, filters and bulk-loads it into a database. Watch the semaphore, batches and retries work in real time.</p>
+
+  <div class="bar">
+    <input id="q" value="tecno phone" aria-label="Search query">
+    <select id="sp" aria-label="Speed"><option value="1">1× speed</option><option value="2" selected>2× speed</option><option value="4">4× speed</option></select>
+    <button id="go">▶ Run ETL</button>
+  </div>
+  <div class="chips">
+    <span class="chip">SEMAPHORE_LIMIT = <b>8</b></span><span class="chip">BATCH_SIZE = <b>10</b></span>
+    <span class="chip">BATCH_DELAY = <b>1.2s</b></span><span class="chip">MAX_RETRIES = <b>3</b></span>
+    <span class="chip">backoff on <b>429</b></span><span class="chip">aiohttp + asyncio.gather</span>
+  </div>
+
+  <div class="card"><canvas id="cv"></canvas></div>
+
+  <div class="grid">
+    <div class="st"><small>Requests in flight</small><b id="s-in">0</b> <span style="color:var(--mu)">/ 8</span><div class="slots" id="slots"></div></div>
+    <div class="st"><small>Extracted</small><b id="s-ex">0</b></div>
+    <div class="st"><small>Filtered out</small><b id="s-fl">0</b></div>
+    <div class="st"><small>Loaded to DB</small><b id="s-ld">0</b></div>
+    <div class="st"><small>429 retries</small><b id="s-rt">0</b></div>
+    <div class="st"><small>Elapsed</small><b id="s-t">0.0s</b></div>
+  </div>
+
+  <div class="two">
+    <div class="card"><h3>Platforms</h3><div id="pbs"></div><h3 style="margin-top:14px">Live log</h3><div id="log" style="height:200px"></div></div>
+    <div class="card"><h3>Transform · raw → clean</h3><div class="tbl"><table id="tb"></table></div></div>
+  </div>
+
+  <h3>How it maps to the code</h3>
+  <div class="how">
+    <div class="card"><h4>Extract</h4><p>Catalog pages fetched together with <code>asyncio.gather</code>; every product page and review call is a separate coroutine.</p></div>
+    <div class="card"><h4>Semaphore + batches</h4><p>A shared <code>asyncio.Semaphore</code> caps in-flight requests. Products run in batches with a pause between them to avoid bans.</p></div>
+    <div class="card"><h4>Resilience</h4><p>Retries with exponential backoff and jitter; HTTP 429 triggers a longer wait before the request is retried.</p></div>
+    <div class="card"><h4>Transform + Load</h4><p>Prices parsed to floats, text normalised, accessories removed by a query-aware regex, then bulk-inserted via SQLAlchemy.</p></div>
+  </div>
+  <footer>Simulated data for demonstration · Python · aiohttp · BeautifulSoup · asyncio · SQLAlchemy</footer>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const SEM=8,BATCH=10,DELAY=1200;
+const P=[{id:'jumia',name:'Jumia',c:'#f68b1e',n:24,pages:3},{id:'konga',name:'Konga',c:'#ee1c7a',n:30,pages:3},{id:'jiji',name:'Jiji',c:'#37d67a',n:28,pages:6}];
+const NODES=[['Source',.09],['Extract',.34],['Transform',.6],['Load',.82],['Database',.94]];
+const ACC=["screen protector","tempered glass","phone case","charger","earphone","power bank","fast charger","usb cable","battery","trimmer"];
+let speed=2,parts=[],running=false,t0=0,sleepScale=1,retries=0,log=[];
+const sleep=ms=>new Promise(r=>setTimeout(r,ms/speed));
+const rnd=(a,b)=>a+Math.random()*(b-a);
+
+class Sem{constructor(n){this.n=n;this.q=[];this.used=0}
+ async acq(){if(this.used<this.n){this.used++;return}await new Promise(r=>this.q.push(r))}
+ rel(){const r=this.q.shift();r?r():this.used--}}
+let sem=new Sem(SEM);
+
+$('slots').innerHTML='<i></i>'.repeat(SEM);
+$('pbs').innerHTML=P.map(p=>`<div class="pb"><div class="h"><span><span class="dot" style="background:${p.c}"></span>${p.name}</span><span id="st-${p.id}" style="color:var(--mu)">idle</span></div><div class="tr"><i id="pb-${p.id}" style="background:${p.c}"></i></div></div>`).join('');
+
+function L(p,msg){const d=document.createElement('div');const s=((performance.now()-t0)/1000).toFixed(1).padStart(5);
+ d.innerHTML=`<span class="t">${s}s</span> <span style="color:${p.c}">[${p.name.toUpperCase()}]</span> ${msg}`;
+ const el=$('log');el.appendChild(d);while(el.children.length>80)el.firstChild.remove();el.scrollTop=1e9}
+function stage(p,t){$('st-'+p.id).textContent=t}
+function bar(p,v){$('pb-'+p.id).style.width=Math.min(100,v*100)+'%'}
+
+function spawn(li,a,b,n=1){for(let i=0;i<n;i++)parts.push({li,a,b,t:-i*.07,sp:rnd(.55,1),o:rnd(-9,9)})}
+
+async function get(p,li,what){
+ for(let a=1;a<=3;a++){
+  await sem.acq();p.fl++;spawn(li,0,1);
+  await sleep(rnd(350,900));
+  if(Math.random()<.07){retries++;const w=(2**a)*10;p.fl--;sem.rel();L(p,`<span style="color:#ffb454">429 rate-limited</span> · ${what} · backing off ${w}s (attempt ${a})`);await sleep(1800);continue}
+  p.fl--;sem.rel();return true}
+ return false}
+
+function mkProducts(p,q){
+ const v=["128GB 6GB RAM","Pro 256GB","Lite 64GB","Max Dual SIM","5G 8GB/256GB","Plus 128GB"];
+ return Array.from({length:p.n},(_,i)=>{
+  const acc=Math.random()<.25,k=ACC[(Math.random()*ACC.length)|0];
+  const name=acc?`${k[0].toUpperCase()+k.slice(1)} for ${q} ${v[i%v.length].split(' ')[0]}`:`${q} ${v[i%v.length]}`;
+  return{name:' '+name+'  ',price:'₦ '+(Math.round(rnd(45,520))*1000).toLocaleString(),acc}})}
+
+function buildRe(q){const ql=q.toLowerCase();const k=ACC.filter(a=>!ql.includes(a));return new RegExp('\\b('+k.join('|')+')\\b','i')}
+
+function addRow(p,raw,clean,price,ok){
+ const tr=document.createElement('tr');
+ tr.innerHTML=`<td><span class="dot" style="background:${p.c}"></span></td><td class="n" title="${clean}">${clean}</td><td>${raw.price} → <b>${price}</b></td><td class="${ok?'ok':'no'}">${ok?'kept':'filtered'}</td>`;
+ const tb=$('tb');tb.insertBefore(tr,tb.firstChild);while(tb.children.length>12)tb.lastChild.remove()}
+
+const tot={ex:0,fl:0,ld:0};
+async function runP(p,li,q,re){
+ L(p,`Starting ETL for query='${q}'`);stage(p,'extracting catalog');
+ await Promise.all(Array.from({length:p.pages},(_,i)=>get(p,li,`catalog page ${i+1}`)));
+ const items=mkProducts(p,q);L(p,`[catalog] found ${items.length} products · batches of ${BATCH}`);
+ const done=[];let b=0;
+ for(let i=0;i<items.length;i+=BATCH){
+  const batch=items.slice(i,i+BATCH);b++;stage(p,`batch ${b}/${Math.ceil(items.length/BATCH)}`);
+  L(p,`[batch ${b}] processing ${batch.length} products (gather)`);
+  await Promise.all(batch.map(async it=>{await get(p,li,'product page');p.ex++;tot.ex++;bar(p,p.ex/items.length*.6);done.push(it)}));
+  spawn(li,1,2,Math.min(6,batch.length));
+  if(i+BATCH<items.length){L(p,`[batch ${b}] done · waiting ${(DELAY/1000)}s`);await sleep(DELAY)}}
+ L(p,`Extracted ${done.length} raw items`);stage(p,'transforming');
+ let kept=0;
+ for(const it of done){
+  const bad=re.test(it.name);const clean=it.name.trim().replace(/\s+/g,' ');
+  const price=(+it.price.replace(/[^\d]/g,'')).toFixed(1);
+  addRow(p,it,clean,price,!bad);
+  if(bad){tot.fl++}else kept++;
+  bar(p,.6+(done.indexOf(it)+1)/done.length*.3);
+  if(Math.random()<.4)spawn(li,2,3);
+  await sleep(70)}
+ L(p,`Transformed → ${kept} products (${done.length-kept} filtered)`);
+ stage(p,'loading');spawn(li,3,4,6);await sleep(900);
+ tot.ld+=kept;p.ld=kept;bar(p,1);stage(p,`✓ ${kept} rows loaded`);
+ L(p,`<span class="ok">Loaded ${kept} rows into DB</span>`)}
+
+$('go').onclick=async()=>{
+ if(running)return;running=true;$('go').disabled=true;speed=+$('sp').value;
+ const q=$('q').value.trim()||'tecno phone';
+ $('log').innerHTML='';$('tb').innerHTML='';parts=[];retries=0;tot.ex=tot.fl=tot.ld=0;sem=new Sem(SEM);
+ P.forEach(p=>{p.fl=0;p.ex=0;p.ld=0;bar(p,0);stage(p,'queued')});
+ t0=performance.now();const re=buildRe(q);
+ await Promise.all(P.map((p,i)=>runP(p,i,q,re)));
+ running=false;$('go').disabled=false;$('go').textContent='↻ Run again';
+ P[0].c&&L({name:'ETL',c:'#6ea8ff'},`Pipeline complete · ${tot.ld} rows loaded in ${((performance.now()-t0)/1000).toFixed(1)}s`)};
+
+// canvas
+const cv=$('cv'),cx=cv.getContext('2d');let W,H;
+function size(){const d=devicePixelRatio||1;W=cv.clientWidth;H=cv.clientHeight;cv.width=W*d;cv.height=H*d;cx.setTransform(d,0,0,d,0,0)}
+addEventListener('resize',size);size();
+function rr(x,y,w,h,r){cx.beginPath();cx.roundRect(x,y,w,h,r)}
+let last=performance.now();
+function frame(now){
+ const dt=Math.min(.05,(now-last)/1000);last=now;cx.clearRect(0,0,W,H);
+ const small=W<600,lanes=[H*.2,H*.5,H*.8],nw=small?54:92,nh=small?44:56;
+ // lanes
+ P.forEach((p,li)=>{const y=lanes[li];
+  cx.strokeStyle=p.c+'40';cx.lineWidth=2;cx.setLineDash([6,8]);cx.lineDashOffset=-now/40*(running?1:0);
+  cx.beginPath();cx.moveTo(NODES[0][1]*W,y);cx.lineTo(NODES[4][1]*W,y);cx.stroke();cx.setLineDash([]);
+  NODES.forEach(([nm,f],ni)=>{const x=f*W;
+   const act=running&&((ni==1&&p.fl>0)||(ni==2&&$('st-'+p.id).textContent=='transforming')||(ni==3&&$('st-'+p.id).textContent=='loading'));
+   cx.fillStyle='#0e121c';cx.strokeStyle=act?p.c:'#262f45';cx.lineWidth=act?2:1;
+   if(act){cx.shadowColor=p.c;cx.shadowBlur=18}
+   rr(x-nw/2,y-nh/2,nw,nh,10);cx.fill();cx.stroke();cx.shadowBlur=0;
+   cx.fillStyle=ni==0?p.c:'#c9d2ea';cx.font=(small?'10':'12')+'px Inter,system-ui,sans-serif';cx.textAlign='center';
+   cx.fillText(ni==0?p.name:nm,x,y-2);
+   cx.fillStyle='#7c88a6';cx.font=(small?'9':'11')+'px ui-monospace,monospace';
+   const sub=ni==1?`${p.ex}/${p.n}`:ni==2?'clean':ni==3?(p.ld||'—'):ni==4?'rows':'';
+   cx.fillText(sub,x,y+14)})});
+ // particles
+ parts=parts.filter(q=>q.t<1);
+ parts.forEach(q=>{q.t+=dt*q.sp;if(q.t<0)return;const p=P[q.li],y=lanes[q.li]+q.o*.6;
+  const x1=NODES[q.a][1]*W+nw/2,x2=NODES[q.b][1]*W-nw/2,x=x1+(x2-x1)*q.t;
+  cx.fillStyle=p.c;cx.shadowColor=p.c;cx.shadowBlur=12;cx.beginPath();cx.arc(x,y,3.2,0,7);cx.fill();cx.shadowBlur=0});
+ // stats
+ const fl=P.reduce((a,p)=>a+p.fl,0);
+ $('s-in').textContent=sem.used;$('s-ex').textContent=tot.ex;$('s-fl').textContent=tot.fl;$('s-ld').textContent=tot.ld;$('s-rt').textContent=retries;
+ if(running)$('s-t').textContent=((now-t0)/1000).toFixed(1)+'s';
+ [...$('slots').children].forEach((e,i)=>e.classList.toggle('on',i<sem.used));
+ requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
